@@ -1,0 +1,16 @@
+# JUCE / CMake / IDE builds
+Builds/
+build/
+cmake-build*/
+**/Debug/
+**/Release/
+**/*.a
+**/*.o
+**/*.obj
+**/*.lib
+**/*.exe
+**/*.dll
+**/*.dylib
+
+# macOS
+.DS_Store

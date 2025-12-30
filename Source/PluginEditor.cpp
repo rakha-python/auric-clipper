@@ -1,8 +1,5 @@
 //==============================================================================
 // PluginEditor.cpp — AURIC Z-CLIP (Darkmode 3D) FULL FILE
-// NOTE:
-// - Requires AuricLookAndFeel.h (the one we refined: BIG knob ≠ SMALL knob)
-// - This file keeps your 1:1 normalized layout + screws + brushed metal + bottom neon strip
 //==============================================================================
 
 #include "PluginProcessor.h"
@@ -12,7 +9,6 @@
 #include <cmath>
 
 //==============================================================================
-// Layout base mengikuti artwork reference (AURIC Z-CLIP)
 namespace
 {
     static constexpr int kBaseW = 2048;
@@ -47,9 +43,6 @@ namespace
         return { b.getCentreX() - w * 0.5f, b.getCentreY() - h * 0.5f, w, h };
     }
 
-    //==============================================================
-    // Invisible toggle LF (oversampleButton jadi click-area saja)
-    //==============================================================
     struct InvisibleToggleLF : juce::LookAndFeel_V4
     {
         void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool, bool) override {}
@@ -61,9 +54,6 @@ namespace
         return instance;
     }
 
-    //==============================================================
-    // Responsive size class (S/M/L)
-    //==============================================================
     enum class UIClass { S, M, L };
 
     inline UIClass getUIClassForPanel (juce::Rectangle<float> panel)
@@ -74,22 +64,18 @@ namespace
         return UIClass::L;
     }
 
-    //==============================================================
-    // Font helper (SAFE - no FontOptions)
-    //==============================================================
     inline juce::Font makeFont (float px, bool bold, float kerning)
     {
         px = juce::jlimit (10.0f, 260.0f, px);
-
         juce::Font f (px);
         f.setBold (bold);
         f.setExtraKerningFactor (kerning);
-        f.setTypefaceName ("Montserrat"); // OK if missing: JUCE will fallback
+        f.setTypefaceName ("Montserrat");
         return f;
     }
 
     //==============================================================
-    // Brushed metal panel (horizontal brush + sheen + vignette)
+    // Brushed metal panel
     //==============================================================
     inline void drawBrushedMetal (juce::Graphics& g, juce::Rectangle<float> r)
     {
@@ -99,14 +85,13 @@ namespace
         g.fillRect (r);
 
         {
-            ColourGradient grad (AuricLookAndFeel::bgMetal().brighter (0.08f), r.getX(), r.getY(),
-                                 AuricLookAndFeel::bgDark().darker   (0.35f), r.getX(), r.getBottom(),
+            ColourGradient grad (AuricLookAndFeel::bgMetalHi().darker (0.10f), r.getX(), r.getY(),
+                                 AuricLookAndFeel::bgMetalLo().darker (0.05f), r.getX(), r.getBottom(),
                                  false);
             g.setGradientFill (grad);
             g.fillRect (r);
         }
 
-        // Horizontal brushing noise
         {
             Random rng (0xA11C0FFEu);
             const int y0 = (int) r.getY();
@@ -114,28 +99,35 @@ namespace
 
             for (int y = y0; y < y1; ++y)
             {
-                const float a = 0.0035f + rng.nextFloat() * 0.0075f;
+                const float a = 0.006f + rng.nextFloat() * 0.014f;
                 g.setColour (Colours::white.withAlpha (a));
                 g.drawLine (r.getX(), (float) y, r.getRight(), (float) y, 1.0f);
             }
         }
 
-        // Top sheen
         {
-            ColourGradient sheen (Colours::white.withAlpha (0.035f),
-                                  r.getX(), r.getY() + r.getHeight() * 0.12f,
+            ColourGradient sheen (Colours::white.withAlpha (0.060f),
+                                  r.getX(), r.getY() + r.getHeight() * 0.10f,
                                   Colours::transparentWhite,
-                                  r.getX(), r.getY() + r.getHeight() * 0.62f,
+                                  r.getX(), r.getY() + r.getHeight() * 0.52f,
                                   false);
             g.setGradientFill (sheen);
             g.fillRect (r);
         }
 
-        // Vignette
+        {
+            const float cx = r.getCentreX();
+            const float cy = r.getY() + r.getHeight() * 0.34f;
+            ColourGradient spot (Colours::white.withAlpha (0.055f), cx, cy,
+                                 Colours::transparentWhite,      cx, r.getBottom(), true);
+            g.setGradientFill (spot);
+            g.fillRect (r);
+        }
+
         {
             ColourGradient vig (Colours::transparentBlack,
                                 r.getCentreX(), r.getCentreY(),
-                                Colours::black.withAlpha (0.48f),
+                                Colours::black.withAlpha (0.28f),
                                 r.getX(), r.getY(), true);
             g.setGradientFill (vig);
             g.fillRect (r);
@@ -176,7 +168,7 @@ namespace
     }
 
     //==============================================================
-    // Screws (hardware feel: recessed + head + slot depth)
+    // Screws (phillips + recessed)
     //==============================================================
     inline void drawScrews (juce::Graphics& g, juce::Rectangle<float> r)
     {
@@ -186,32 +178,30 @@ namespace
 
         auto one = [&](float cx, float cy, float rotDeg)
         {
-            const float dWell  = 88.0f * s;   // recess diameter
-            const float dHead  = 62.0f * s;   // screw head diameter
-            const float dHi    = 22.0f * s;   // tiny spec
+            const float dWell  = 90.0f * s;
+            const float dHead  = 64.0f * s;
+            const float dHi    = 22.0f * s;
             const float rrW    = dWell * 0.5f;
             const float rrH    = dHead * 0.5f;
 
-            // 1) recess shadow
-            g.setColour (Colours::black.withAlpha (0.55f));
-            g.fillEllipse (cx - rrW + 1.4f * s, cy - rrW + 2.4f * s, dWell, dWell);
+            g.setColour (Colours::black.withAlpha (0.58f));
+            g.fillEllipse (cx - rrW + 1.5f * s, cy - rrW + 2.5f * s, dWell, dWell);
 
-            // 2) recess cavity gradient
             {
-                ColourGradient cav (Colours::black.withAlpha (0.55f), cx - rrW, cy - rrW,
-                                    Colours::black.withAlpha (0.15f), cx + rrW, cy + rrW,
+                ColourGradient cav (Colours::black.withAlpha (0.62f), cx - rrW, cy - rrW,
+                                    Colours::black.withAlpha (0.16f), cx + rrW, cy + rrW,
                                     false);
                 g.setGradientFill (cav);
                 g.fillEllipse (cx - rrW, cy - rrW, dWell, dWell);
 
-                g.setColour (Colours::white.withAlpha (0.06f));
-                g.drawEllipse (cx - rrW, cy - rrW, dWell, dWell, 1.1f * s);
+                g.setColour (Colours::white.withAlpha (0.05f));
+                g.drawEllipse (cx - rrW, cy - rrW, dWell, dWell, 1.0f * s);
             }
 
-            // 3) screw head metal
             {
-                ColourGradient head (AuricLookAndFeel::screwMetal().brighter (0.28f), cx - rrH, cy - rrH,
-                                     AuricLookAndFeel::screwMetal().darker   (0.55f), cx + rrH, cy + rrH,
+                auto metal = AuricLookAndFeel::screwMetal();
+                ColourGradient head (metal.brighter (0.18f), cx - rrH, cy - rrH,
+                                     metal.darker   (0.65f), cx + rrH, cy + rrH,
                                      false);
                 g.setGradientFill (head);
                 g.fillEllipse (cx - rrH, cy - rrH, dHead, dHead);
@@ -219,40 +209,40 @@ namespace
                 g.setColour (Colours::black.withAlpha (0.55f));
                 g.drawEllipse (cx - rrH, cy - rrH, dHead, dHead, 1.2f * s);
 
-                g.setColour (Colours::white.withAlpha (0.08f));
-                g.drawEllipse (cx - rrH + 0.8f * s, cy - rrH + 0.6f * s,
-                               dHead - 1.6f * s, dHead - 1.6f * s, 0.9f * s);
+                g.setColour (Colours::white.withAlpha (0.07f));
+                g.drawEllipse (cx - rrH + 0.9f * s, cy - rrH + 0.6f * s,
+                               dHead - 1.8f * s, dHead - 1.8f * s, 0.9f * s);
             }
 
-            // 4) slot (depth + highlight) with rotation
             {
                 const float slotW = 30.0f * s;
-                const float slotH = 6.8f * s;
-                auto slot = Rectangle<float> (0, 0, slotW, slotH).withCentre ({ cx, cy });
+                const float slotH = 6.6f * s;
+
+                auto hSlot = Rectangle<float> (0, 0, slotW, slotH).withCentre ({ cx, cy });
+                auto vSlot = Rectangle<float> (0, 0, slotH, slotW).withCentre ({ cx, cy });
 
                 Path p;
-                p.addRoundedRectangle (slot, slotH * 0.45f);
+                p.addRoundedRectangle (hSlot, slotH * 0.45f);
+                p.addRoundedRectangle (vSlot, slotH * 0.45f);
 
-                AffineTransform t = AffineTransform::rotation (degreesToRadians (rotDeg), cx, cy);
-                p.applyTransform (t);
+                p.applyTransform (AffineTransform::rotation (degreesToRadians (rotDeg), cx, cy));
 
-                g.setColour (Colours::black.withAlpha (0.65f));
-                Path pShadow = p;
-                pShadow.applyTransform (AffineTransform::translation (0.9f * s, 1.2f * s));
-                g.fillPath (pShadow);
+                Path sh = p;
+                sh.applyTransform (AffineTransform::translation (0.9f * s, 1.2f * s));
+                g.setColour (Colours::black.withAlpha (0.68f));
+                g.fillPath (sh);
 
-                ColourGradient slotG (Colours::black.withAlpha (0.75f), cx, cy - 8.0f * s,
-                                      Colours::black.withAlpha (0.25f), cx, cy + 8.0f * s,
+                ColourGradient slotG (Colours::black.withAlpha (0.78f), cx, cy - 10.0f * s,
+                                      Colours::black.withAlpha (0.28f), cx, cy + 10.0f * s,
                                       false);
                 g.setGradientFill (slotG);
                 g.fillPath (p);
 
                 g.setColour (Colours::white.withAlpha (0.10f));
-                g.strokePath (p, PathStrokeType (0.9f * s));
+                g.strokePath (p, PathStrokeType (0.85f * s));
             }
 
-            // 5) tiny specular highlight
-            g.setColour (Colours::white.withAlpha (0.11f));
+            g.setColour (Colours::white.withAlpha (0.10f));
             g.fillEllipse (cx - rrH * 0.55f, cy - rrH * 0.55f, dHi, dHi);
         };
 
@@ -261,10 +251,10 @@ namespace
         const float yT = r.getY() + r.getHeight() * 0.060f;
         const float yB = r.getY() + r.getHeight() * 0.925f;
 
-        one (xL, yT, -10.0f);
-        one (xR, yT,  12.0f);
-        one (xL, yB,   9.0f);
-        one (xR, yB, -12.0f);
+        one (xL, yT,  10.0f);
+        one (xR, yT, -12.0f);
+        one (xL, yB, -8.0f);
+        one (xR, yB,  12.0f);
     }
 
     //==============================================================
@@ -278,12 +268,12 @@ namespace
         const float margin = 54.0f * s;
         const float y = r.getBottom() - 30.0f * s;
 
-        g.setColour (accent.withAlpha (0.10f));
-        g.fillRect (r.getX() + margin, y - 4.2f * s, r.getWidth() - margin * 2.0f, 9.0f * s);
+        g.setColour (accent.withAlpha (0.12f));
+        g.fillRect (r.getX() + margin, y - 4.8f * s, r.getWidth() - margin * 2.0f, 10.5f * s);
 
-        g.setColour (accent.withAlpha (0.72f));
+        g.setColour (accent.withAlpha (0.78f));
         g.fillRect (r.getX() + margin + 2.0f * s, y,
-                    r.getWidth() - (margin + 2.0f * s) * 2.0f, 2.0f * s);
+                    r.getWidth() - (margin + 2.0f * s) * 2.0f, 2.2f * s);
     }
 
     //==============================================================
@@ -309,9 +299,6 @@ namespace
         g.drawEllipse (hole, 1.0f);
     }
 
-    //==============================================================
-    // Snap window sizes (S/M/L)
-    //==============================================================
     inline void snapEditorSize (juce::AudioProcessorEditor& ed, UIClass c)
     {
         auto makeH = [](int w) { return (int) std::round (w * (double) kBaseH / (double) kBaseW); };
@@ -339,7 +326,6 @@ AuricClipperAudioProcessorEditor::AuricClipperAudioProcessorEditor (AuricClipper
     setupKnob (trimKnob,    trimLabel,    "TRIM");
     setupKnob (mixKnob,     mixLabel,     "MIX");
 
-    // We paint labels manually in paint() (match ref)
     driveLabel.setVisible (false);
     preLabel.setVisible (false);
     satClipLabel.setVisible (false);
@@ -348,19 +334,20 @@ AuricClipperAudioProcessorEditor::AuricClipperAudioProcessorEditor (AuricClipper
 
     ceilingSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     ceilingSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    ceilingSlider.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    ceilingSlider.setWantsKeyboardFocus (false);
     addAndMakeVisible (ceilingSlider);
 
     oversampleButton.setClickingTogglesState (true);
     addAndMakeVisible (oversampleButton);
 
-    // Invisible click-area (LED drawn in paint)
     oversampleButton.setButtonText ("");
     oversampleButton.setLookAndFeel (&getInvisibleToggleLF());
     oversampleButton.setColour (juce::ToggleButton::textColourId, juce::Colours::transparentBlack);
     oversampleButton.setColour (juce::ToggleButton::tickColourId, juce::Colours::transparentBlack);
     oversampleButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    oversampleButton.setWantsKeyboardFocus (false);
 
-    // Attachments
     driveAttachment      = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.apvts, "drive",     driveKnob);
     preAttachment        = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.apvts, "pre",       preKnob);
     satClipAttachment    = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.apvts, "satclip",   satClipKnob);
@@ -374,10 +361,12 @@ AuricClipperAudioProcessorEditor::AuricClipperAudioProcessorEditor (AuricClipper
     setResizeLimits (620, 414, 2200, 1467);
 
     referenceOverlay = loadReferenceOverlay();
+    startTimerHz (30);
 }
 
 AuricClipperAudioProcessorEditor::~AuricClipperAudioProcessorEditor()
 {
+    stopTimer();
     oversampleButton.setLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
 }
@@ -388,6 +377,8 @@ void AuricClipperAudioProcessorEditor::setupKnob (juce::Slider& knob, juce::Labe
 {
     knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     knob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    knob.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    knob.setWantsKeyboardFocus (false);
     knob.setName (text);
     addAndMakeVisible (knob);
 
@@ -419,23 +410,23 @@ void AuricClipperAudioProcessorEditor::drawStatusLed (juce::Graphics& g, juce::R
 
     if (isOn)
     {
-        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.10f));
+        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.12f));
         g.fillEllipse (led.expanded (d * 0.42f));
 
-        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.16f));
+        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.18f));
         g.fillEllipse (led.expanded (d * 0.24f));
 
-        ColourGradient lg (AuricLookAndFeel::accentGlow().withAlpha (0.90f),
+        ColourGradient lg (AuricLookAndFeel::accentGlow().withAlpha (0.92f),
                            led.getCentreX(), led.getY(),
                            AuricLookAndFeel::accentPink().darker (0.25f),
                            led.getCentreX(), led.getBottom(), false);
         g.setGradientFill (lg);
         g.fillEllipse (led);
 
-        g.setColour (Colours::white.withAlpha (0.55f));
+        g.setColour (Colours::white.withAlpha (0.58f));
         g.fillEllipse (led.reduced (d * 0.36f).translated (-d * 0.10f, -d * 0.12f));
 
-        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.70f));
+        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.74f));
         g.drawEllipse (led, 1.0f);
     }
     else
@@ -484,10 +475,10 @@ void AuricClipperAudioProcessorEditor::paint (juce::Graphics& g)
 
     g.setImageResamplingQuality (Graphics::highResamplingQuality);
 
-    auto panel = getPanel (getLocalBounds());
+    auto panel = getPanel (getLocalBounds().reduced (2));
     const auto ui = getUIClassForPanel (panel);
 
-    g.fillAll (AuricLookAndFeel::bgDark().darker (0.70f));
+    g.fillAll (AuricLookAndFeel::bgDark());
 
     ::drawBrushedMetal (g, panel);
     ::drawBezel (g, panel);
@@ -503,7 +494,7 @@ void AuricClipperAudioProcessorEditor::paint (juce::Graphics& g)
         g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.16f));
         g.drawText ("AURIC", r.translated (-1.0f * s, 1.0f * s), Justification::left);
 
-        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.62f));
+        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.68f));
         g.drawText ("AURIC", r, Justification::left);
     }
     {
@@ -512,52 +503,52 @@ void AuricClipperAudioProcessorEditor::paint (juce::Graphics& g)
         g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.18f));
         g.drawText ("Z-CLIP", r.translated (-1.0f * s, 1.0f * s), Justification::right);
 
-        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.74f));
+        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.80f));
         g.drawText ("Z-CLIP", r, Justification::right);
     }
 
-    // ===== Small labels (di atas knob masing-masing) =====
+    // ===== Small labels =====
     {
         float labelPx = 42.0f * s;
         if (ui == UIClass::S) labelPx *= 0.92f;
 
         g.setFont (makeFont (labelPx, false, 0.16f));
-        g.setColour (AuricLookAndFeel::textLight().withAlpha (0.55f));
+        g.setColour (AuricLookAndFeel::textLight().withAlpha (0.70f));
 
-        g.drawText ("PRE",      rectN (panel, 0.065f, 0.175f, 0.100f, 0.06f), Justification::centred);
-        g.drawText ("TRIM",     rectN (panel, 0.115f, 0.415f, 0.100f, 0.06f), Justification::centred);
-        g.drawText ("SAT/CLIP", rectN (panel, 0.815f, 0.175f, 0.140f, 0.06f), Justification::centred);
-        g.drawText ("MIX",      rectN (panel, 0.785f, 0.415f, 0.100f, 0.06f), Justification::centred);
+        g.drawText ("PRE",      rectN (panel, 0.150f, 0.175f, 0.120f, 0.06f), Justification::centred);
+        g.drawText ("TRIM",     rectN (panel, 0.200f, 0.415f, 0.120f, 0.06f), Justification::centred);
+        g.drawText ("SAT/CLIP", rectN (panel, 0.730f, 0.175f, 0.180f, 0.06f), Justification::centred);
+        g.drawText ("MIX",      rectN (panel, 0.700f, 0.415f, 0.120f, 0.06f), Justification::centred);
     }
 
-    // ===== DRIVE label (di bawah knob besar) =====
+    // ===== DRIVE label =====
     {
-        float yTop = 0.540f;
+        float yTop = 0.545f;
         float hN   = 0.100f;
         float px   = 90.0f * s;
 
-        if (ui == UIClass::S) { yTop = 0.545f; hN = 0.095f; px *= 0.88f; }
-        if (ui == UIClass::L) { yTop = 0.535f; hN = 0.105f; }
+        if (ui == UIClass::S) { yTop = 0.548f; hN = 0.095f; px *= 0.88f; }
+        if (ui == UIClass::L) { yTop = 0.542f; hN = 0.105f; }
 
         auto r = rectN (panel, 0.380f, yTop, 0.240f, hN);
         g.setFont (makeFont (px, true, 0.10f));
-        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.55f));
+        g.setColour (AuricLookAndFeel::accentPink().withAlpha (0.62f));
         g.drawText ("DRIVE", r, Justification::centred);
     }
 
-    // ===== 2X label (di samping kanan LED) =====
+    // ===== 2X label =====
     {
         float px = 46.0f * s;
         if (ui == UIClass::S) px *= 0.92f;
 
         g.setFont (makeFont (px, false, 0.18f));
-        g.setColour (AuricLookAndFeel::textLight().withAlpha (0.60f));
-        g.drawText ("2X", rectN (panel, 0.160f, 0.765f, 0.08f, 0.06f), Justification::centredLeft);
+        g.setColour (AuricLookAndFeel::textLight().withAlpha (0.70f));
+        g.drawText ("2X", rectN (panel, 0.220f, 0.765f, 0.08f, 0.06f), Justification::centredLeft);
     }
 
     // ===== small hole decor =====
     {
-        auto hole = squareCN (panel, 0.340f, 0.790f, 0.016f);
+        auto hole = squareCN (panel, 0.355f, 0.790f, 0.016f);
         ::drawSmallHole (g, hole);
     }
 
@@ -567,15 +558,15 @@ void AuricClipperAudioProcessorEditor::paint (juce::Graphics& g)
         if (ui == UIClass::S) px *= 0.90f;
 
         g.setFont (makeFont (px, false, 0.16f));
-        g.setColour (AuricLookAndFeel::textLight().withAlpha (0.52f));
+        g.setColour (AuricLookAndFeel::textLight().withAlpha (0.66f));
 
-        auto r = rectN (panel, 0.580f, 0.765f, 0.280f, 0.060f);
-        g.drawText ("OUTPUT CEILING", r, Justification::centredLeft, false);
+        auto r = rectN (panel, 0.585f, 0.765f, 0.320f, 0.060f);
+        g.drawText ("OUTPUT CEILING", r, Justification::centredLeft);
     }
 
-    // ===== LED (draw) =====
+    // ===== LED =====
     {
-        auto led = squareCN (panel, 0.115f, 0.790f, (ui == UIClass::S ? 0.058f : 0.055f));
+        auto led = squareCN (panel, 0.175f, 0.790f, (ui == UIClass::S ? 0.060f : 0.058f));
         drawStatusLed (g, led, oversampleButton.getToggleState());
     }
 
@@ -599,80 +590,77 @@ void AuricClipperAudioProcessorEditor::paint (juce::Graphics& g)
     }
 }
 
-//==============================================================================
-
 void AuricClipperAudioProcessorEditor::resized()
 {
-    auto panel = getPanel (getLocalBounds());
+    auto panel = getPanel (getLocalBounds().reduced (2));
     const auto ui = getUIClassForPanel (panel);
 
-    // ===== Big knob DRIVE (tengah) =====
-    float bigSizeN   = 0.38f;
+    // ===== Big knob DRIVE (hero) =====
+    float bigSizeN   = 0.49f;
     float bigCenterX = 0.500f;
-    float bigCenterY = 0.340f;
+    float bigCenterY = 0.325f;
 
     // ===== Small knobs =====
-    float smallN   = 0.135f;
+    float smallN = 0.218f;
 
-    // X positions
-    float leftX1   = 0.115f;   // PRE
-    float leftX2   = 0.165f;   // TRIM
-    float rightX1  = 0.885f;   // SAT/CLIP
-    float rightX2  = 0.835f;   // MIX
+    float leftX1  = 0.190f; // PRE
+    float leftX2  = 0.240f; // TRIM
+    float rightX1 = 0.810f; // SAT/CLIP
+    float rightX2 = 0.760f; // MIX
 
-    // Y positions
-    float smallY1  = 0.280f;
-    float smallY2  = 0.520f;
+    float smallY1 = 0.305f;
+    float smallY2 = 0.540f;
 
-    // LED 2X
-    float ledCX    = 0.115f;
+    // LED
+    float ledCX    = 0.175f;
     float ledCY    = 0.790f;
-    float ledSizeN = 0.055f;
+    float ledSizeN = 0.058f;
 
     // OUTPUT CEILING slider
-    float sliderX  = 0.380f;
-    float sliderY  = 0.765f;
-    float sliderW  = 0.200f;
-    float sliderH  = 0.055f;
+    float sliderX  = 0.340f;
+    float sliderY  = 0.755f;
+    float sliderW  = 0.240f;
+    float sliderH  = 0.078f;
 
     if (ui == UIClass::S)
     {
-        bigSizeN   = 0.36f;
-        bigCenterY = 0.335f;
+        bigSizeN   = 0.47f;
+        bigCenterY = 0.320f;
 
-        smallN   = 0.130f;
+        smallN     = 0.205f;
 
-        leftX1   = 0.120f;
-        leftX2   = 0.170f;
-        rightX1  = 0.880f;
-        rightX2  = 0.830f;
+        leftX1     = 0.195f;
+        leftX2     = 0.245f;
+        rightX1    = 0.805f;
+        rightX2    = 0.755f;
 
-        ledCX    = 0.120f;
-        ledSizeN = 0.058f;
+        ledCX      = 0.180f;
+        ledSizeN   = 0.060f;
 
-        sliderW  = 0.195f;
-        sliderY  = 0.768f;
-        sliderH  = 0.060f;
+        sliderW    = 0.230f;
+        sliderY    = 0.768f;
+        sliderH    = 0.060f;
     }
     else if (ui == UIClass::L)
     {
-        bigSizeN   = 0.40f;
-        bigCenterY = 0.345f;
+        bigSizeN   = 0.51f;
+        bigCenterY = 0.330f;
 
-        smallN   = 0.140f;
+        smallN     = 0.228f;
 
-        leftX1   = 0.110f;
-        leftX2   = 0.160f;
-        rightX1  = 0.890f;
-        rightX2  = 0.840f;
+        leftX1     = 0.185f;
+        leftX2     = 0.235f;
+        rightX1    = 0.815f;
+        rightX2    = 0.765f;
 
-        ledCX    = 0.110f;
-        ledSizeN = 0.052f;
+        ledCX      = 0.170f;
+        ledSizeN   = 0.056f;
 
-        sliderW  = 0.190f;
-        sliderY  = 0.760f;
+        sliderW    = 0.240f;
+        sliderY    = 0.760f;
     }
 
+    // ===== Apply bounds =====
     driveKnob.setBounds (squareCN (panel, bigCenterX, bigCenterY, bigSizeN).toNearestInt());
 
     preKnob.setBounds     (squareCN (panel, leftX1,  smallY1, smallN).toNearestInt());
@@ -681,7 +669,7 @@ void AuricClipperAudioProcessorEditor::resized()
     mixKnob.setBounds     (squareCN (panel, rightX2, smallY2, smallN).toNearestInt());
 
     oversampleButton.setBounds (squareCN (panel, ledCX, ledCY, ledSizeN).toNearestInt());
-    ceilingSlider.setBounds (rectN (panel, sliderX, sliderY, sliderW, sliderH).toNearestInt());
+    ceilingSlider.setBounds    (rectN (panel, sliderX, sliderY, sliderW, sliderH).toNearestInt());
 }
 
 //==============================================================================
@@ -702,4 +690,16 @@ bool AuricClipperAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
     if (ch == '3') { snapEditorSize (*this, UIClass::L); return true; }
 
     return false;
+}
+
+//==============================================================================
+
+void AuricClipperAudioProcessorEditor::timerCallback()
+{
+    const bool currentState = oversampleButton.getToggleState();
+    if (currentState != lastLedState)
+    {
+        lastLedState = currentState;
+        repaint();
+    }
 }

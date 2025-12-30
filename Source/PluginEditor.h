@@ -1,40 +1,62 @@
 #pragma once
 
 #include <JuceHeader.h>
+
 #include "PluginProcessor.h"
 #include "AuricLookAndFeel.h"
 
-class AuricClipperAudioProcessorEditor : public juce::AudioProcessorEditor
+//==============================================================================
+class AuricClipperAudioProcessorEditor  : public juce::AudioProcessorEditor,
+                                         private juce::Timer
 {
 public:
-    AuricClipperAudioProcessorEditor(AuricClipperAudioProcessor&);
+    explicit AuricClipperAudioProcessorEditor (AuricClipperAudioProcessor&);
     ~AuricClipperAudioProcessorEditor() override;
 
-    void paint(juce::Graphics&) override;
+    //==============================================================================
+    void paint (juce::Graphics&) override;
     void resized() override;
     bool keyPressed (const juce::KeyPress& key) override;
 
 private:
+    //==============================================================================
+    void timerCallback() override;
+
+    void setupKnob (juce::Slider& knob, juce::Label& label, const juce::String& text);
+
+    // LED besar kiri bawah (indikator oversample)
+    void drawStatusLed (juce::Graphics& g, juce::Rectangle<float> ledBounds, bool isOn);
+
+    // Reference overlay loader (image.png)
+    juce::Image loadReferenceOverlay() const;
+
+    //==============================================================================
     AuricClipperAudioProcessor& audioProcessor;
+
     AuricLookAndFeel auricLookAndFeel;
 
-    // Main drive knob
+    // Knobs
     juce::Slider driveKnob;
-    juce::Label driveLabel;
+    juce::Slider preKnob;
+    juce::Slider satClipKnob;
+    juce::Slider trimKnob;
+    juce::Slider mixKnob;
 
-    // Small knobs
-    juce::Slider preKnob, satClipKnob, trimKnob, mixKnob;
-    juce::Label preLabel, satClipLabel, trimLabel, mixLabel;
+    // Labels (dibuat tapi di-hide karena label digambar manual di paint())
+    juce::Label driveLabel;
+    juce::Label preLabel;
+    juce::Label satClipLabel;
+    juce::Label trimLabel;
+    juce::Label mixLabel;
 
     // Output ceiling slider
     juce::Slider ceilingSlider;
-    juce::Label ceilingLabel;
 
-    // 2X toggle
+    // Oversample toggle (click-area saja; LED digambar manual di paint())
     juce::ToggleButton oversampleButton;
-    juce::Label oversampleLabel;
 
-    // Parameter attachments
+    //==============================================================================
+    // APVTS Attachments
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> driveAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> preAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> satClipAttachment;
@@ -43,14 +65,13 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ceilingAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> oversampleAttachment;
 
-    void setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& text);
-    void drawBrushedMetal(juce::Graphics& g, juce::Rectangle<float> bounds);
-    void drawCornerScrews(juce::Graphics& g);
-    void drawStatusLed (juce::Graphics& g, juce::Rectangle<float> ledBounds, bool isOn);
-    juce::Image loadReferenceOverlay() const;
-
-    bool showReferenceOverlay = false;
+    //==============================================================================
+    // Overlay
+    bool showReferenceOverlay { false };
     juce::Image referenceOverlay;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AuricClipperAudioProcessorEditor)
+    // LED state cache
+    bool lastLedState { false };
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AuricClipperAudioProcessorEditor)
 };
